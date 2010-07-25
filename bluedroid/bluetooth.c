@@ -16,6 +16,7 @@
 
 #define LOG_TAG "bluedroid"
 
+#include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -41,6 +42,9 @@
 
 #define MIN(x,y) (((x)<(y))?(x):(y))
 
+#ifdef BOARD_BLUETOOTH_SERVICE
+static const char BLUETOOTH_SERVICE[] = BOARD_BLUETOOTH_SERVICE;
+#endif
 
 static int rfkill_id = -1;
 static char *rfkill_state_path = NULL;
@@ -161,6 +165,14 @@ int bt_enable() {
         goto out;
     }
 
+#ifdef BOARD_BLUETOOTH_SERVICE
+    LOGI("Starting bluetooth service \"%s\"", BLUETOOTH_SERVICE);
+    if (property_set("ctl.start", BLUETOOTH_SERVICE) < 0) {
+        LOGE("Failed to start bluetooth service \"%s\"", BLUETOOTH_SERVICE);
+        goto out;
+    }
+#endif
+
     // Try for 10 seconds, this can only succeed once hciattach has sent the
     // firmware and then turned on hci device via HCIUARTSETPROTO ioctl
     for (attempt = 1000; attempt > 0;  attempt--) {
@@ -208,6 +220,14 @@ int bt_disable() {
     hci_sock = create_hci_sock();
     if (hci_sock < 0) goto out;
     ioctl(hci_sock, HCIDEVDOWN, HCI_DEV_ID);
+
+#ifdef BOARD_BLUETOOTH_SERVICE
+    LOGI("Stopping bluetooth service \"%s\"", BLUETOOTH_SERVICE);
+    if (property_set("ctl.stop", BLUETOOTH_SERVICE) < 0) {
+        LOGE("Failed to stop bluetooth service \"%s\"", BLUETOOTH_SERVICE);
+        goto out;
+    }
+#endif
 
     LOGI("Stopping hciattach deamon");
     if (property_set("ctl.stop", "hciattach") < 0) {
