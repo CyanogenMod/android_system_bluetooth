@@ -90,6 +90,7 @@
 #define HCI_UART_H4DS	3
 #define HCI_UART_LL		4
 
+#define RFKILL_WAIT 200000
 
 int uart_fd = -1;
 int hcdfile_fd = -1;
@@ -112,8 +113,14 @@ unsigned char hci_update_baud_rate[] = { 0x01, 0x18, 0xfc, 0x06, 0x00, 0x00,
 unsigned char hci_write_bd_addr[] = { 0x01, 0x01, 0xfc, 0x06, 
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
+/* google code, Broadcom Bluetooth Feature
 unsigned char hci_write_sleep_mode[] = { 0x01, 0x27, 0xfc, 0x0c, 
 	0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00,
+	0x00, 0x00 };
+*/
+//Broadcom Bluetooth Feature
+unsigned char hci_write_sleep_mode[] = { 0x01, 0x27, 0xfc, 0x0c, 
+	0x01, 0x01, 0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00,
 	0x00, 0x00 };
 
 int
@@ -320,6 +327,39 @@ parse_cmd_line(int argc, char **argv)
 }
 
 void
+reset_bt()
+{
+	int btfd;
+	char *rfkill = "/sys/class/rfkill/rfkill0/state";
+	char *disable = "0";
+	char *enable = "1";
+	struct timespec req = {0};
+
+	req.tv_sec = 0;
+	req.tv_nsec = RFKILL_WAIT * 1000L;
+
+	btfd = fopen(rfkill, "w");
+	if (btfd == 0 ) {
+		fprintf(stderr, "open(%s) failed: %s (%d)", rfkill, strerror(errno),
+				errno);
+		return;
+	}
+	fputs(disable, btfd);
+	fclose(btfd);
+	nanosleep(&req, (struct timespec *)NULL);
+
+	btfd = fopen(rfkill, "w");
+	if (btfd == 0 ) {
+		fprintf(stderr, "open(%s) failed: %s (%d)", rfkill, strerror(errno),
+				errno);
+		return;
+	}
+	fputs(enable, btfd);
+	fclose(btfd);
+	nanosleep(&req, (struct timespec *)NULL);
+}
+
+void
 init_uart()
 {
 	tcflush(uart_fd, TCIOFLUSH);
@@ -435,8 +475,6 @@ proc_patchram()
 
 	read(uart_fd, &buffer[0], 2);
 
-	usleep(50000);
-
 	while (read(hcdfile_fd, &buffer[1], 3)) {
 		buffer[0] = 0x01;
 
@@ -551,6 +589,8 @@ main (int argc, char **argv)
 		exit(1);
 	}
 
+	reset_bt();
+
 	init_uart();
 
 	proc_reset();
@@ -567,12 +607,15 @@ main (int argc, char **argv)
 		proc_bdaddr();
 	}
 
+	if (enable_hci) {
+		proc_enable_hci();
+	}
+
 	if (enable_lpm) {
 		proc_enable_lpm();
 	}
 
 	if (enable_hci) {
-		proc_enable_hci();
 		while (1) {
 			sleep(UINT_MAX);
 		}
@@ -580,3 +623,4 @@ main (int argc, char **argv)
 
 	exit(0);
 }
+
