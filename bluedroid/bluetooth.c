@@ -195,6 +195,7 @@ int bt_enable() {
         LOGE("Failed to start bluetoothd");
         goto out;
     }
+    sleep(HCID_START_DELAY_SEC);
 
     ret = 0;
 
