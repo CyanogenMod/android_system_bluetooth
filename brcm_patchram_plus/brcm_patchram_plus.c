@@ -233,6 +233,25 @@ parse_bdaddr(char *optarg)
 }
 
 int
+parse_bdaddr2(char *optarg)
+{
+	int bd_addr[6];
+	int i;
+
+	sscanf(optarg, "%02X%02X%02X%02X%02X%02X",
+		&bd_addr[5], &bd_addr[4], &bd_addr[3],
+		&bd_addr[2], &bd_addr[1], &bd_addr[0]);
+
+	for (i = 0; i < 6; i++) {
+		hci_write_bd_addr[4 + i] = bd_addr[i];
+	}
+
+	bdaddr_flag = 1;	
+
+	return(0);
+}
+
+int
 parse_enable_lpm(char *optarg)
 {
 	enable_lpm = 1;
@@ -548,34 +567,70 @@ read_default_bdaddr()
 {
 	int sz;
 	int fd;
+	struct stat st;
 	char path[PROPERTY_VALUE_MAX];
+	char addr_from_ril[PROPERTY_VALUE_MAX];
 	char bdaddr[18];
+/*
+ *	We can get BT address from previously saved file
+ */
+	fd = open("/data/misc/bluetoothd/address", O_RDONLY);
+	if (fd > 0)
+	{
+		sz = read(fd, addr_from_ril, 12);
+		printf("Read default bdaddr from /data/misc/bluetoothd/address: %s\n", addr_from_ril);
+		close(fd);
+		parse_bdaddr2(addr_from_ril);
+		return;
+	}
+/*
+ *	We can get BT address from ril
+ */
+	property_get("ril.bt_macaddr", addr_from_ril, "");
+	if (addr_from_ril[0] != 0)
+	{
+		printf("Read default bdaddr from ril.bt_macaddr: %s\n", addr_from_ril);
+		parse_bdaddr2(addr_from_ril);
 
+		if ( stat("/data/misc/bluetoothd", &st) == 0 )
+		{
+		    fd = open("/data/misc/bluetoothd/address", O_WRONLY|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP);
+		    if (fd > 0)
+		    {
+			write(fd, addr_from_ril, strlen(addr_from_ril));
+			close(fd);
+		    }
+		}
+        return;
+	}
+/*
+ *	Or we can get BT address from a file
+ */
 	property_get("ro.bt.bdaddr_path", path, "");
-	if (path[0] == 0)
-		return;
-
-	fd = open(path, O_RDONLY);
-	if (fd < 0) {
-		fprintf(stderr, "open(%s) failed: %s (%d)", path, strerror(errno),
+	if (path[0] != 0)
+	{
+		fd = open(path, O_RDONLY);
+		if (fd < 0) {
+		    fprintf(stderr, "open(%s) failed: %s (%d)", path, strerror(errno),
 				errno);
-		return;
-	}
+		    return;
+		}
 
-	sz = read(fd, bdaddr, sizeof(bdaddr));
-	if (sz < 0) {
-		fprintf(stderr, "read(%s) failed: %s (%d)", path, strerror(errno),
+		sz = read(fd, bdaddr, sizeof(bdaddr));
+		if (sz < 0) {
+		    fprintf(stderr, "read(%s) failed: %s (%d)", path, strerror(errno),
 				errno);
-		close(fd);
-		return;
-	} else if (sz != sizeof(bdaddr)) {
-		fprintf(stderr, "read(%s) unexpected size %d", path, sz);
-		close(fd);
-		return;
-	}
+		    close(fd);
+		    return;
+		} else if (sz != sizeof(bdaddr)) {
+			fprintf(stderr, "read(%s) unexpected size %d", path, sz);
+			close(fd);
+			return;
+		}
 
-	printf("Read default bdaddr of %s\n", bdaddr);
-	parse_bdaddr(bdaddr);
+		printf("Read default bdaddr from ro.bt.bdaddr_path: %s\n", bdaddr);
+		parse_bdaddr(bdaddr);
+	}
 }
 
 int
