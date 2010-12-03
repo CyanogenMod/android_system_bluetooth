@@ -480,6 +480,10 @@ proc_patchram()
 
 	read(uart_fd, &buffer[0], 2);
 
+#ifndef TARGET_IS_GALAXYS
+        usleep(50000);
+#endif
+
 	while (read(hcdfile_fd, &buffer[1], 3)) {
 		buffer[0] = 0x01;
 
