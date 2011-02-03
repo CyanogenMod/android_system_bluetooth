@@ -158,6 +158,7 @@ int bt_enable() {
     LOGI("Starting hciattach daemon");
     if (property_set("ctl.start", "hciattach") < 0) {
         LOGE("Failed to start hciattach");
+        set_bluetooth_power(0);
         goto out;
     }
 
@@ -175,12 +176,14 @@ int bt_enable() {
     }
     if (attempt == 0) {
         LOGE("%s: Timeout waiting for HCI device to come up", __FUNCTION__);
+        set_bluetooth_power(0);
         goto out;
     }
 
     LOGI("Starting bluetoothd deamon");
     if (property_set("ctl.start", "bluetoothd") < 0) {
         LOGE("Failed to start bluetoothd");
+        set_bluetooth_power(0);
         goto out;
     }
     sleep(HCID_START_DELAY_SEC);
