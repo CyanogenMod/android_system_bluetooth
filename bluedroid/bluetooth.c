@@ -16,9 +16,12 @@
 
 #define LOG_TAG "bluedroid"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -44,7 +47,6 @@
 
 static int rfkill_id = -1;
 static char *rfkill_state_path = NULL;
-
 
 static int init_rfkill() {
     char path[64];
@@ -146,6 +148,180 @@ static inline int create_hci_sock() {
     return sk;
 }
 
+struct RefBase_s {
+    unsigned int magic;
+    unsigned int base;
+};
+
+static const char const * REF_FILE = "/tmp/bluedroid_ref";
+static const unsigned int MAGIC = 0x55665566;
+
+static int inc_atomic()
+{
+    struct RefBase_s ref = {magic : MAGIC, base : 0};
+    /*l_type l_whence l_start l_len l_pid*/
+    struct flock fl = {F_RDLCK,    SEEK_SET,  0,        0,      0};
+    int fd = -1;
+    int ret = -1;
+    int magic = MAGIC;
+
+    LOGV("Enter inc_atomic");
+
+    if ((fd = open(REF_FILE, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO)) == -1)
+    {
+        LOGW("btdroid warning: open or create bluedroid_ref error");
+        ret = -2;
+        goto out;
+    }
+
+    LOGV("Trying to get lock in inc_atomic....");
+
+    if (fcntl(fd, F_SETLKW, &fl) == -1)
+    {
+        LOGW("btdroid waring: F_SETLKW failed");
+        ret = -1;
+        goto out;
+    }
+
+    LOGV("got lock");
+
+    if (read(fd, (void *)&ref, sizeof(ref)) == -1)
+    {
+        LOGW("btdroid waring: read reference count error");
+        ret = -1;
+        goto out;
+    }
+
+    if(ref.magic != MAGIC)
+    {
+        LOGV("btdroid reference file magic number is 0x5566");
+        ref.magic = MAGIC;
+        ref.base = 0;
+    }
+
+    if(ref.base > 3) LOGW("btdroid waring: btdroid reference count > 3 base = %d", ref.base);
+
+    ref.base += 1;
+
+    fl.l_type = F_UNLCK;
+
+    if (fcntl(fd, F_SETLK, &fl) == -1)
+    {
+        LOGW("btdroid waring: F_SETLK : F_UNLCK failed");
+        ret = -1;
+        goto out;
+    }
+
+    fl.l_type = F_WRLCK;
+
+    if (fcntl(fd, F_SETLKW, &fl) == -1)
+    {
+        LOGW("btdroid waring: F_SETLKW : F_WRLCK failed");
+        ret = -1;
+        goto out;
+    }
+
+    lseek(fd, 0, SEEK_SET);
+
+    if (write(fd, (const void*)&ref, sizeof(ref)) == -1)
+    {
+        LOGW("btdroid waring: write reference count failed");
+        ret = -1;
+        goto out;
+    }
+
+    ret = ref.base;
+    LOGV("Exit inc_atomic ref = %d", ret);
+out:
+    if(fd != -1) close(fd);
+    return ret;
+}
+
+static int dec_atomic()
+{
+    struct RefBase_s ref = {magic : MAGIC, base : 0};
+    /*l_type l_whence l_start l_len l_pid*/
+    struct flock fl = {F_RDLCK,    SEEK_SET,  0,        0,      0};
+    int fd = -1;
+    int ret = -1;
+    int magic = MAGIC;
+
+    LOGV("Enter dec_atomic");
+
+    if ((fd = open(REF_FILE, O_RDWR)) == -1)
+    {
+        LOGW("btdroid warning: open or create bluedroid_ref error");
+        ret = -2;
+        goto out;
+    }
+
+    LOGV("Trying to get lock in inc_atomic....");
+
+    if (fcntl(fd, F_SETLKW, &fl) == -1)
+    {
+        LOGW("btdroid waring: F_SETLKW failed");
+        ret = -1;
+        goto out;
+    }
+
+    LOGV("got lock");
+
+    if (read(fd, (void *)&ref, sizeof(ref)) == -1)
+    {
+        LOGW("btdroid waring: read reference count error");
+        ret = -1;
+        goto out;
+    }
+
+    if(ref.magic != MAGIC)
+    {
+        LOGV("btdroid reference file magic number is 0x5566");
+        ref.magic = MAGIC;
+        ref.base = 1;
+    }
+
+    if(ref.base == 0)
+    {
+        LOGW("btdroid waring: dereference btdroid reference  base = %d", ref.base);
+        ref.base = 1;
+    }
+
+    ref.base -= 1;
+
+    fl.l_type = F_UNLCK;
+
+    if (fcntl(fd, F_SETLK, &fl) == -1)
+    {
+        LOGW("btdroid waring: F_SETLK : F_UNLCK failed");
+        ret = -1;
+        goto out;
+    }
+
+    fl.l_type = F_WRLCK;
+
+    if (fcntl(fd, F_SETLKW, &fl) == -1)
+    {
+        LOGW("btdroid waring: F_SETLKW : F_WRLCK failed");
+        ret = -1;
+        goto out;
+    }
+
+    lseek(fd, 0, SEEK_SET);
+
+    if (write(fd, (const void*)&ref, sizeof(ref)) == -1)
+    {
+        LOGW("btdroid waring: write reference count failed");
+        ret = -1;
+        goto out;
+    }
+
+    ret = ref.base;
+    LOGV("Exit inc_atomic ref = %d", ret);
+out:
+    if(fd != -1) close(fd);
+    return ret;
+}
+
 int bt_enable() {
     LOGV(__FUNCTION__);
 
@@ -153,7 +329,15 @@ int bt_enable() {
     int hci_sock = -1;
     int attempt;
 
-    if (set_bluetooth_power(1) < 0) goto out;
+    if (bt_is_enabled() == 1) {
+        LOGI("bt has been enabled already. inc reference count only");
+        ret = 0;
+        goto out;
+    }
+
+    if (set_bluetooth_power(1) < 0) {
+        goto out;
+    }
 
     LOGI("Starting hciattach daemon");
     if (property_set("ctl.start", "hciattach") < 0) {
@@ -163,14 +347,13 @@ int bt_enable() {
 
     // Try for 10 seconds, this can only succeed once hciattach has sent the
     // firmware and then turned on hci device via HCIUARTSETPROTO ioctl
+    hci_sock = create_hci_sock();
+    if (hci_sock < 0) goto out;
     for (attempt = 1000; attempt > 0;  attempt--) {
-        hci_sock = create_hci_sock();
-        if (hci_sock < 0) goto out;
 
         if (!ioctl(hci_sock, HCIDEVUP, HCI_DEV_ID)) {
             break;
         }
-        close(hci_sock);
         usleep(10000);  // 10 ms retry delay
     }
     if (attempt == 0) {
@@ -189,6 +372,12 @@ int bt_enable() {
 
 out:
     if (hci_sock >= 0) close(hci_sock);
+
+    if(0 == ret)
+    {
+        inc_atomic();
+        LOGV("after inc : reference count = %d", refcount);
+    }
     return ret;
 }
 
@@ -196,7 +385,15 @@ int bt_disable() {
     LOGV(__FUNCTION__);
 
     int ret = -1;
+    int refcount = dec_atomic();
     int hci_sock = -1;
+
+    LOGV("bt_disable() : reference count now = %d", refcount);
+    if(refcount > 0)
+    {
+        LOGV("bt_disable: other app using bt so just do noting");
+        return 0;
+    }
 
     LOGI("Stopping bluetoothd deamon");
     if (property_set("ctl.stop", "bluetoothd") < 0) {
