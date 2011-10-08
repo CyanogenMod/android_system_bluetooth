@@ -8,6 +8,9 @@ LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 
+ifeq ($(BOARD_WLAN_DEVICE),bcm4330)
+LOCAL_CFLAGS += -DBOARD_HAS_BCM4330
+endif
 LOCAL_SRC_FILES := brcm_patchram_plus.c
 
 LOCAL_MODULE := brcm_patchram_plus

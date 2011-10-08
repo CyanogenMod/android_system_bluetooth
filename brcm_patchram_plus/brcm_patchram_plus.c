@@ -433,7 +433,9 @@ proc_patchram()
 
 	read_event(uart_fd, buffer);
 
-	read(uart_fd, &buffer[0], 2);
+#ifndef BOARD_HAS_BCM4330
+    read(uart_fd, &buffer[0], 2);
+#endif
 
 	usleep(50000);
 
@@ -574,6 +576,5 @@ main (int argc, char **argv)
 			sleep(UINT_MAX);
 		}
 	}
-
 	exit(0);
 }
