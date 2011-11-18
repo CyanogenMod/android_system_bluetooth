@@ -37,13 +37,17 @@
 #endif
 
 #define HCID_STOP_DELAY_USEC 500000
+#define DELAY_USEC 2000000
 
 #define MIN(x,y) (((x)<(y))?(x):(y))
+#define HCISMD_MOD_PARAM "/sys/module/hci_smd/parameters/hcismd_set"
 
+/*Variables to identify the transport using msm type*/
+static char transport_type[PROPERTY_VALUE_MAX];
+static int is_transportSMD;
 
 static int rfkill_id = -1;
 static char *rfkill_state_path = NULL;
-
 
 static int init_rfkill() {
     char path[64];
@@ -136,6 +140,30 @@ out:
     return ret;
 }
 
+static int set_hci_smd_transport(int on) {
+    int sz;
+    int fd = -1;
+    int ret = -1;
+    const char buffer = (on ? '1' : '0');
+
+    fd = open(HCISMD_MOD_PARAM, O_WRONLY);
+    if (fd < 0) {
+        LOGE("open(%s) for write failed: %s (%d)", HCISMD_MOD_PARAM,
+             strerror(errno), errno);
+        goto out;
+    }
+    sz = write(fd, &buffer, 1);
+    if (sz < 0) {
+        LOGE("write(%s) failed: %s (%d)", HCISMD_MOD_PARAM, strerror(errno),
+             errno);
+        goto out;
+    }
+    ret = 0;
+
+out:
+    if (fd >= 0) close(fd);
+    return ret;
+}
 static inline int create_hci_sock() {
     int sk = socket(AF_BLUETOOTH, SOCK_RAW, BTPROTO_HCI);
     if (sk < 0) {
@@ -151,16 +179,39 @@ int bt_enable() {
     int ret = -1;
     int hci_sock = -1;
     int attempt;
+    static int bt_on_once;
 
-    if (set_bluetooth_power(1) < 0) goto out;
+    ret = property_get("ro.qualcomm.bt.hci_transport", transport_type, NULL);
+    if (ret == 0)
+        LOGE("ro.qualcomm.bt.hci_transport not set\n");
+    else
+        LOGI("ro.qualcomm.bt.hci_transport %s \n", transport_type);
+
+    if (!strcasecmp(transport_type, "smd"))
+        is_transportSMD = 1;
+    else
+        is_transportSMD = 0;
+
+    if (!is_transportSMD)
+        if (set_bluetooth_power(1) < 0)
+            goto out;
 
     LOGI("Starting hciattach daemon");
     if (property_set("ctl.start", "hciattach") < 0) {
         LOGE("Failed to start hciattach");
-        set_bluetooth_power(0);
+        if (!is_transportSMD)
+            set_bluetooth_power(0);
         goto out;
     }
 
+    if (is_transportSMD) {
+    /* TODO : added sleep to accomodate the consistant on-time across
+       iterations, since hci dev registration happening only 1st iteration */
+        if (!bt_on_once)
+            bt_on_once = 1;
+        else
+            usleep(DELAY_USEC);
+    }
     // Try for 10 seconds, this can only succeed once hciattach has sent the
     // firmware and then turned on hci device via HCIUARTSETPROTO ioctl
     for (attempt = 1000; attempt > 0;  attempt--) {
@@ -182,17 +233,20 @@ int bt_enable() {
     if (attempt == 0) {
         LOGE("%s: Timeout waiting for HCI device to come up, error- %d, ",
             __FUNCTION__, ret);
-        if (property_set("ctl.stop", "hciattach") < 0) {
-            LOGE("Error stopping hciattach");
+        if (!is_transportSMD) {
+            if (property_set("ctl.stop", "hciattach") < 0) {
+                LOGE("Error stopping hciattach");
+            }
+            set_bluetooth_power(0);
         }
-        set_bluetooth_power(0);
         goto out;
     }
 
     LOGI("Starting bluetoothd deamon");
     if (property_set("ctl.start", "bluetoothd") < 0) {
         LOGE("Failed to start bluetoothd");
-        set_bluetooth_power(0);
+        if (!is_transportSMD)
+            set_bluetooth_power(0);
         goto out;
     }
 
@@ -219,16 +273,21 @@ int bt_disable() {
     hci_sock = create_hci_sock();
     if (hci_sock < 0) goto out;
     ioctl(hci_sock, HCIDEVDOWN, HCI_DEV_ID);
-
-    LOGI("Stopping hciattach deamon");
-    if (property_set("ctl.stop", "hciattach") < 0) {
-        LOGE("Error stopping hciattach");
-        goto out;
+    if (!is_transportSMD) {
+        LOGI("Stopping hciattach deamon");
+        if (property_set("ctl.stop", "hciattach") < 0) {
+            LOGE("Error stopping hciattach");
+            goto out;
+        }
     }
 
-    if (set_bluetooth_power(0) < 0) {
-        goto out;
+    if (!is_transportSMD) {
+        if (set_bluetooth_power(0) < 0)
+            goto out;
+    } else {
+        set_hci_smd_transport(0);
     }
+
     ret = 0;
 
 out:
@@ -243,11 +302,22 @@ int bt_is_enabled() {
     int ret = -1;
     struct hci_dev_info dev_info;
 
+    ret = property_get("ro.qualcomm.bt.hci_transport", transport_type, NULL);
+    if (ret == 0)
+        LOGE("ro.qualcomm.bt.hci_transport not set\n");
+    else
+        LOGI("ro.qualcomm.bt.hci_transport %s \n", transport_type);
+
+    if (!strcasecmp(transport_type, "smd"))
+        is_transportSMD = 1;
+    else
+        is_transportSMD = 0;
 
     // Check power first
-    ret = check_bluetooth_power();
-    if (ret == -1 || ret == 0) goto out;
-
+    if (!is_transportSMD) {
+        ret = check_bluetooth_power();
+        if (ret == -1 || ret == 0) goto out;
+    }
     ret = -1;
 
     // Power is on, now check if the HCI interface is up
@@ -255,7 +325,8 @@ int bt_is_enabled() {
     if (hci_sock < 0) goto out;
 
     dev_info.dev_id = HCI_DEV_ID;
-    if (ioctl(hci_sock, HCIGETDEVINFO, (void *)&dev_info) < 0) {
+    if (ret = ioctl(hci_sock, HCIGETDEVINFO, (void *)&dev_info) < 0) {
+        LOGE("ioctl error: ret=%d", ret);
         ret = 0;
         goto out;
     }
