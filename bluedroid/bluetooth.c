@@ -44,10 +44,26 @@
 
 /*Variables to identify the transport using msm type*/
 static char transport_type[PROPERTY_VALUE_MAX];
-static int is_transportSMD;
+static int is_transportSMD = -1;
 
 static int rfkill_id = -1;
 static char *rfkill_state_path = NULL;
+
+static void get_hci_trasport() {
+
+    int ret = -1;
+    ret = property_get("ro.qualcomm.bt.hci_transport", transport_type, NULL);
+    if(ret == 0)
+        LOGI("ro.qualcomm.bt.hci_transport not set\n");
+    else
+        LOGI("ro.qualcomm.bt.hci_transport %s \n", transport_type);
+
+    if (!strcasecmp(transport_type, "smd"))
+        is_transportSMD = 1;
+    else
+        is_transportSMD = 0;
+
+}
 
 static int init_rfkill() {
     char path[64];
@@ -181,16 +197,8 @@ int bt_enable() {
     int attempt;
     static int bt_on_once;
 
-    ret = property_get("ro.qualcomm.bt.hci_transport", transport_type, NULL);
-    if (ret == 0)
-        LOGE("ro.qualcomm.bt.hci_transport not set\n");
-    else
-        LOGI("ro.qualcomm.bt.hci_transport %s \n", transport_type);
-
-    if (!strcasecmp(transport_type, "smd"))
-        is_transportSMD = 1;
-    else
-        is_transportSMD = 0;
+    if(-1 == is_transportSMD)
+      get_hci_trasport();
 
     if (!is_transportSMD)
         if (set_bluetooth_power(1) < 0)
@@ -204,14 +212,6 @@ int bt_enable() {
         goto out;
     }
 
-    if (is_transportSMD) {
-    /* TODO : added sleep to accomodate the consistant on-time across
-       iterations, since hci dev registration happening only 1st iteration */
-        if (!bt_on_once)
-            bt_on_once = 1;
-        else
-            usleep(DELAY_USEC);
-    }
     // Try for 10 seconds, this can only succeed once hciattach has sent the
     // firmware and then turned on hci device via HCIUARTSETPROTO ioctl
     for (attempt = 1000; attempt > 0;  attempt--) {
@@ -263,6 +263,9 @@ int bt_disable() {
     int ret = -1;
     int hci_sock = -1;
 
+    if (-1 == is_transportSMD)
+       get_hci_trasport();
+
     LOGI("Stopping bluetoothd deamon");
     if (property_set("ctl.stop", "bluetoothd") < 0) {
         LOGE("Error stopping bluetoothd");
@@ -302,16 +305,8 @@ int bt_is_enabled() {
     int ret = -1;
     struct hci_dev_info dev_info;
 
-    ret = property_get("ro.qualcomm.bt.hci_transport", transport_type, NULL);
-    if (ret == 0)
-        LOGE("ro.qualcomm.bt.hci_transport not set\n");
-    else
-        LOGI("ro.qualcomm.bt.hci_transport %s \n", transport_type);
-
-    if (!strcasecmp(transport_type, "smd"))
-        is_transportSMD = 1;
-    else
-        is_transportSMD = 0;
+    if (-1 == is_transportSMD)
+       get_hci_trasport();
 
     // Check power first
     if (!is_transportSMD) {
