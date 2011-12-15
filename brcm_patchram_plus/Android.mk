@@ -14,7 +14,12 @@ endif
 ifeq ($(BOARD_HAVE_BLUETOOTH_BCM_SEMC),true)
 LOCAL_CFLAGS += -DBCM_SEMC
 endif
-LOCAL_SRC_FILES := brcm_patchram_plus.c
+
+ifneq ($(BOARD_CUSTOM_BRCM_PATCHRAM_PLUS),)
+  LOCAL_SRC_FILES += $(BOARD_CUSTOM_BRCM_PATCHRAM_PLUS)
+else
+  LOCAL_SRC_FILES += brcm_patchram_plus.c
+endif
 
 LOCAL_MODULE := brcm_patchram_plus
 
