@@ -6,8 +6,13 @@ LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := \
-	bluetooth.c
+ifeq ($(BOARD_CUSTOM_BLUEDROID), true)
+	LOCAL_SRC_FILES := \
+		$(BOARD_CUSTOM_BLUEDROID)
+else
+	LOCAL_SRC_FILES := \
+		bluetooth.c
+endif
 
 LOCAL_C_INCLUDES := \
 	$(LOCAL_PATH)/include \
