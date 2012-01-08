@@ -1,0 +1,10 @@
+Change-Id: I109f91a8454865b3f8976d10d3cc409206cd8491
+Code-Review+2: Steve Kondik <shade@chemlab.org>
+Verified+1: Steve Kondik <shade@chemlab.org>
+Code-Review+1: Jerpelea <jerpelea@gmail.com>
+Code-Review+1: Twisted Playground <twistedumbrella@gmail.com>
+Submitted-by: Steve Kondik <shade@chemlab.org>
+Submitted-at: Sun, 08 Jan 2012 09:26:03 +0300
+Reviewed-on: http://review.cyanogenmod.com/11137
+Project: CyanogenMod/android_system_bluetooth
+Branch: refs/heads/ics
