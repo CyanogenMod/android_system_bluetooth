@@ -8,6 +8,10 @@ LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 
+ifeq ($(BOARD_HAVE_BLUETOOTH_BCM_SEMC),true)
+LOCAL_CFLAGS += -DBCM_SEMC
+endif
+
 LOCAL_SRC_FILES := brcm_patchram_plus.c
 
 LOCAL_MODULE := brcm_patchram_plus

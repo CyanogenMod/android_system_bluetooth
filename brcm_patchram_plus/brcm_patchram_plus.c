@@ -524,6 +524,9 @@ parse_cmd_line(int argc, char **argv)
 void
 init_uart()
 {
+#ifdef BCM_SEMC
+	usleep(150*1000);
+#endif
 	tcflush(uart_fd, TCIOFLUSH);
 	tcgetattr(uart_fd, &termios);
 
