@@ -8,6 +8,10 @@ LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 
+ifeq ($(TARGET_NEEDS_BLUETOOTH_INIT_DELAY),true)
+LOCAL_CFLAGS += -DBCM_INIT_DELAY
+endif
+
 LOCAL_SRC_FILES := brcm_patchram_plus.c
 
 LOCAL_MODULE := brcm_patchram_plus
