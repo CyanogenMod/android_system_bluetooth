@@ -514,7 +514,7 @@ parse_cmd_line(int argc, char **argv)
 			printf ("%s \n", argv[optind]);
 		if ((uart_fd = open(argv[optind], O_RDWR | O_NOCTTY)) == -1) {
 			fprintf(stderr, "port %s could not be opened, error %d\n",
-					argv[2], errno);
+					argv[optind], errno);
 		}
 	}
 
