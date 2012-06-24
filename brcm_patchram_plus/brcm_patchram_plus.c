@@ -192,6 +192,31 @@ uchar hci_write_pcm_data_format[] =
 uchar hci_write_i2spcm_interface_param[] =
 	{ 0x01, 0x6d, 0xFC, 0x04, 0x00, 0x00, 0x00, 0x00 };
 
+#ifdef SAMSUNG_BLUETOOTH
+char* get_samsung_bluetooth_type()
+{
+    char buf[10];
+    int fd = open("/data/.cid.info", O_RDONLY);
+    if (fd < 0)
+        return NULL;
+
+    if (read(fd, buf, sizeof(buf)) < 0) {
+        close(fd);
+        return NULL;
+    }
+
+    close(fd);
+
+    if (strncmp(buf, "murata", 6) == 0)
+        return "_murata";
+
+    if (strncmp(buf, "semco", 5) == 0)
+        return "_semco";
+
+    return NULL;
+}
+#endif
+
 int
 parse_patchram(char *optarg)
 {
@@ -208,6 +233,21 @@ parse_patchram(char *optarg)
 		fprintf(stderr, "file %s not an HCD file\n", optarg);
 		exit(4);
 	}
+
+#ifdef SAMSUNG_BLUETOOTH
+    char optarg2[256];
+    char* type = get_samsung_bluetooth_type();
+    char* fext = ".hcd";
+
+    if (type != NULL) {
+        memset(optarg2, 0, 256);
+        strncpy(optarg2, optarg, strlen(optarg) - 4);
+        strcpy(optarg2 + strlen(optarg2), type);
+        strcpy(optarg2 + strlen(optarg2), fext);
+        optarg = optarg2;
+        fprintf(stderr, "using %s as hcdfile\n", optarg);
+    }
+#endif
 
 	if ((hcdfile_fd = open(optarg, O_RDONLY)) == -1) {
 		fprintf(stderr, "file %s could not be opened, error %d\n", optarg, errno);
