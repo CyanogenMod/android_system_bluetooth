@@ -212,8 +212,11 @@ char* get_samsung_bluetooth_type()
     if (strncmp(buf, "murata", 6) == 0)
         return "_murata";
 
-    if (strncmp(buf, "semco", 5) == 0)
-        return "_semco";
+    if (strncmp(buf, "semcove", 7) == 0)
+        return "_semcove";
+
+    if (strncmp(buf, "semcosh", 7) == 0)
+        return "_semcosh";
 
     return NULL;
 }
