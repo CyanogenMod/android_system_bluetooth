@@ -111,6 +111,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include <stdlib.h>
 
@@ -333,9 +334,19 @@ parse_bdaddr(char *optarg)
 	int bd_addr[6];
 	int i;
 
-	sscanf(optarg, "%02X:%02X:%02X:%02X:%02X:%02X",
+	if (sscanf(optarg, "%02X:%02X:%02X:%02X:%02X:%02X",
 		&bd_addr[5], &bd_addr[4], &bd_addr[3],
-		&bd_addr[2], &bd_addr[1], &bd_addr[0]);
+		&bd_addr[2], &bd_addr[1], &bd_addr[0]) != 6)
+	{
+		/* Parse failure. Samsung bt.tx has a different format, try that one */
+		if (sscanf(optarg, "bt_macaddr:%02X%02X%02X%02X%02X%02X",
+			&bd_addr[5], &bd_addr[4], &bd_addr[3],
+			&bd_addr[2], &bd_addr[1], &bd_addr[0]) != 6)
+		{
+			fprintf(stderr, "bdaddr %s is in an unknown format\n", optarg);
+			return 1;
+		}
+	}
 
 	for (i = 0; i < 6; i++) {
 		hci_write_bd_addr[4 + i] = bd_addr[i];
@@ -793,9 +804,10 @@ read_default_bdaddr()
 
 	char path[PROPERTY_VALUE_MAX];
 
-	char bdaddr[18];
-	int len = 17;
-	memset(bdaddr, 0, (len + 1) * sizeof(char));
+	char *bdaddr;
+	int len;
+
+    struct stat st;
 
 	property_get("ro.bt.bdaddr_path", path, "");
 	if (path[0] == 0)
@@ -808,7 +820,12 @@ read_default_bdaddr()
 		return;
 	}
 
+	fstat(fd, &st);
+	len = st.st_size;
+
+	bdaddr = malloc(len + 1);
 	sz = read(fd, bdaddr, len);
+	bdaddr[len] = '\0';
 	if (sz < 0) {
 		fprintf(stderr, "read(%s) failed: %s (%d)", path, strerror(errno),
 				errno);
@@ -825,6 +842,7 @@ read_default_bdaddr()
 	}
 
 	parse_bdaddr(bdaddr);
+	free(bdaddr);
 }
 #endif
 
