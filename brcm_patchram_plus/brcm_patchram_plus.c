@@ -133,7 +133,7 @@
 #define printf ALOGD
 #undef fprintf
 #define fprintf(x, ...) \
-  { if(x==stderr) ALOGE(__VA_ARGS__); else fprintf(x, __VA_ARGS__); }
+	{ if(x==stderr) ALOGE(__VA_ARGS__); else fprintf(x, __VA_ARGS__); }
 
 #endif //ANDROID
 
@@ -195,71 +195,71 @@ uchar hci_write_i2spcm_interface_param[] =
 #ifdef SAMSUNG_BLUETOOTH
 char* get_samsung_bluetooth_type()
 {
-    char buf[10];
-    int fd = open("/data/.cid.info", O_RDONLY);
-    if (fd < 0) {
-        fprintf(stderr, "couldn't open file /data/.cid.info for reading\n");
-        return NULL;
-    }
+		char buf[10];
+		int fd = open("/data/.cid.info", O_RDONLY);
+		if (fd < 0) {
+				fprintf(stderr, "couldn't open file /data/.cid.info for reading\n");
+				return NULL;
+		}
 
-    if (read(fd, buf, sizeof(buf)) < 0) {
-        close(fd);
-        return NULL;
-    }
+		if (read(fd, buf, sizeof(buf)) < 0) {
+				close(fd);
+				return NULL;
+		}
 
-    close(fd);
+		close(fd);
 
-    if (strncmp(buf, "murata", 6) == 0)
-        return "_murata";
+		if (strncmp(buf, "murata", 6) == 0)
+				return "_murata";
 
-    if (strncmp(buf, "semcove", 7) == 0)
-        return "_semcove";
+		if (strncmp(buf, "semcove", 7) == 0)
+				return "_semcove";
 
-    if (strncmp(buf, "semcosh", 7) == 0)
-        return "_semcosh";
+		if (strncmp(buf, "semcosh", 7) == 0)
+				return "_semcosh";
 
-    return NULL;
+		return NULL;
 }
 #endif
 
 int
 parse_patchram(char *optarg)
 {
-    char *p;
+		char *p;
 
-    if (!(p = strrchr(optarg, '.'))) {
-        fprintf(stderr, "file %s not an HCD file\n", optarg);
-        exit(3);
-    }
+		if (!(p = strrchr(optarg, '.'))) {
+				fprintf(stderr, "file %s not an HCD file\n", optarg);
+				exit(3);
+		}
 
-    p++;
+		p++;
 
-    if (strcasecmp("hcd", p) != 0) {
-        fprintf(stderr, "file %s not an HCD file\n", optarg);
-        exit(4);
-    }
+		if (strcasecmp("hcd", p) != 0) {
+				fprintf(stderr, "file %s not an HCD file\n", optarg);
+				exit(4);
+		}
 
 #ifdef SAMSUNG_BLUETOOTH
-    char optarg2[256];
-    char* type = get_samsung_bluetooth_type();
-    char* fext = ".hcd";
+		char optarg2[256];
+		char* type = get_samsung_bluetooth_type();
+		char* fext = ".hcd";
 
-    if (type != NULL) {
-        memset(optarg2, 0, 256);
-        strncpy(optarg2, optarg, strlen(optarg) - 4);
-        strcpy(optarg2 + strlen(optarg2), type);
-        strcpy(optarg2 + strlen(optarg2), fext);
-        optarg = optarg2;
-        fprintf(stderr, "using %s as hcdfile\n", optarg);
-    }
+		if (type != NULL) {
+				memset(optarg2, 0, 256);
+				strncpy(optarg2, optarg, strlen(optarg) - 4);
+				strcpy(optarg2 + strlen(optarg2), type);
+				strcpy(optarg2 + strlen(optarg2), fext);
+				optarg = optarg2;
+				fprintf(stderr, "using %s as hcdfile\n", optarg);
+		}
 #endif
 
-    if ((hcdfile_fd = open(optarg, O_RDONLY)) == -1) {
-        fprintf(stderr, "file %s could not be opened, error %d\n", optarg, errno);
-        exit(5);
-    }
+		if ((hcdfile_fd = open(optarg, O_RDONLY)) == -1) {
+				fprintf(stderr, "file %s could not be opened, error %d\n", optarg, errno);
+				exit(5);
+		}
 
-    return(0);
+		return(0);
 }
 
 void
@@ -327,13 +327,23 @@ parse_baudrate(char *optarg)
 	return(0);
 }
 
-int
+// this is the function used by parse_cmd_line. It expects the arguments to be
+// the same as the other parse_ functions, therefore it's a PITA to modify
+// for a different pattern
+int 
 parse_bdaddr(char *optarg)
+{
+	return parse_bdaddr_pattern( optarg, "%02X:%02X:%02X:%02X:%02X:%02X" );
+}
+
+// This one will do the actual parsing, using the passed-in pattern
+int
+parse_bdaddr_pattern(char *optarg, const char *pattern)
 {
 	int bd_addr[6];
 	int i;
 
-	sscanf(optarg, "%02X:%02X:%02X:%02X:%02X:%02X",
+	sscanf(optarg, pattern,
 		&bd_addr[5], &bd_addr[4], &bd_addr[3],
 		&bd_addr[2], &bd_addr[1], &bd_addr[0]);
 
@@ -579,7 +589,7 @@ init_uart()
 	cfmakeraw(&termios);
 #else
 	termios.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP
-                | INLCR | IGNCR | ICRNL | IXON);
+								| INLCR | IGNCR | ICRNL | IXON);
 	termios.c_oflag &= ~OPOST;
 	termios.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
 	termios.c_cflag &= ~(CSIZE | PARENB);
@@ -785,46 +795,136 @@ proc_enable_hci()
 }
 
 #ifdef ANDROID
+
+// saves the bluetooth device address to /data/misc/bluetoothd/address
+// if the path to it exists.
+void save_bdaddr( char* bdaddr )
+{
+  struct stat st;
+  int fd;
+  
+	// first, make sure the directory is there. If not, don't bother.
+	if ( stat("/data/misc/bluetoothd", &st) == 0 )
+	{
+		fd = open("/data/misc/bluetoothd/address", O_WRONLY|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP);
+		if (fd > 0)
+		{
+			write(fd, bdaddr, strlen(bdaddr));
+			close(fd);
+		}
+	}
+}
+
 void
 read_default_bdaddr()
 {
 	int sz;
-	int fd;
-
+	int fd;	
 	char path[PROPERTY_VALUE_MAX];
-
+	char addr_from_ril[PROPERTY_VALUE_MAX];
+	char imei_bt[23];
 	char bdaddr[18];
-	int len = 17;
-	memset(bdaddr, 0, (len + 1) * sizeof(char));
+	char *pattern = NULL;
 
+/*
+ *	We can get BT address from previously saved file. Putting this
+ *  first allows us to over-ride everything else if we want.
+ */
+	fd = open("/data/misc/bluetoothd/address", O_RDONLY);
+	if (fd > 0)
+	{
+		sz = read(fd, addr_from_ril, sizeof(bdaddr) );
+		printf("Read default bdaddr from /data/misc/bluetoothd/address: %s\n", addr_from_ril);
+		close(fd);
+
+		if ( sz == sizeof( bdaddr ) )
+		{
+			parse_bdaddr_pattern(addr_from_ril, "%02X:%02X:%02X:%02X:%02X:%02X");
+		}
+		else if ( sz <= 13 )
+		{
+			parse_bdaddr_pattern(addr_from_ril, "%02X%02X%02X%02X%02X%02X");
+		}
+		return;
+	}
+
+/*
+ *	We can get BT address from /efs (thanks qbanin)
+ */
+	fd = open("/efs/imei/bt.txt", O_RDONLY);
+	if (fd > 0)
+	{
+		sz = read(fd, imei_bt, 23);
+		strncpy(addr_from_ril, imei_bt+11, 12);
+		addr_from_ril[12] = 0;
+		printf("Read default bdaddr from /efs/imei/bt.txt: %s\n", addr_from_ril);
+		close(fd);
+		parse_bdaddr_pattern(addr_from_ril, "%02X%02X%02X%02X%02X%02X");
+		save_bdaddr(addr_from_ril);
+		return;
+	}
+
+/*
+ *	We can get BT address from ril
+ */
+	property_get("ril.bt_macaddr", addr_from_ril, "");
+	if (addr_from_ril[0] != 0)
+	{
+		printf("Read default bdaddr from ril.bt_macaddr: %s\n", addr_from_ril);
+		parse_bdaddr_pattern(addr_from_ril, "%02X%02X%02X%02X%02X%02X");
+		save_bdaddr( addr_from_ril );
+		return;
+	}
+
+/*
+ *	Or we can get BT address from a file
+ */
 	property_get("ro.bt.bdaddr_path", path, "");
-	if (path[0] == 0)
-		return;
 
-	fd = open(path, O_RDONLY);
-	if (fd < 0) {
-		fprintf(stderr, "open(%s) failed: %s (%d)", path, strerror(errno),
+	if (path[0] != 0)
+	{
+		fd = open(path, O_RDONLY);
+		if (fd < 0) {
+				fprintf(stderr, "open(%s) failed: %s (%d)", path, strerror(errno),
 				errno);
-		return;
-	}
+				return;
+		}
 
-	sz = read(fd, bdaddr, len);
-	if (sz < 0) {
-		fprintf(stderr, "read(%s) failed: %s (%d)", path, strerror(errno),
+		sz = read(fd, bdaddr, sizeof(bdaddr));
+
+		if (sz < 0) {
+				fprintf(stderr, "read(%s) failed: %s (%d)", path, strerror(errno),
 				errno);
+
+		} else if (sz == sizeof(bdaddr)) {
+				// this indicates that it's colon-separated in format
+				pattern = "%02X:%02X:%02X:%02X:%02X:%02X";
+
+		} else if ( sz >= 12 ) {
+				// 12 is the absolute minimum we can parse an address from.
+				// that represents just the address, no \0 terminator on
+				// the string.  So, we just parse the first 12 bytes as
+				// the address and hope for the best.
+				pattern = "%02X%02X%02X%02X%02X%02X";
+
+		} else { 
+			fprintf(stderr, "read(%s) unexpected size %d", path, sz);
+		}
+
 		close(fd);
-		return;
-	} else if (sz != len) {
-		fprintf(stderr, "read(%s) unexpected size %d", path, sz);
-		close(fd);
-		return;
+		
+		if ( pattern != NULL )
+		{
+			parse_bdaddr_pattern( bdaddr, pattern );
+			save_bdaddr(bdaddr);
+			return;
+		}
 	}
 
-	if (debug) {
-		printf("Read default bdaddr of %s\n", bdaddr);
-	}
-
-	parse_bdaddr(bdaddr);
+	// if we get all the way down here, we haven't managed to find a bdaddr
+	// anywhere. So, hard-code a reasonable default that will also be easy
+	// to spot as a "something is wrong" value. Also, we won't save this one.
+	parse_bdaddr( "BA:DD:BA:DD:BA:DD" );
 }
 #endif
 
