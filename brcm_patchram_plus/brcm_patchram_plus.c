@@ -90,6 +90,7 @@
 #define HCI_UART_H4DS	3
 #define HCI_UART_LL		4
 
+#define RFKILL_WAIT 200000
 
 int uart_fd = -1;
 int hcdfile_fd = -1;
@@ -112,8 +113,14 @@ unsigned char hci_update_baud_rate[] = { 0x01, 0x18, 0xfc, 0x06, 0x00, 0x00,
 unsigned char hci_write_bd_addr[] = { 0x01, 0x01, 0xfc, 0x06, 
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
+/* google code, Broadcom Bluetooth Feature
 unsigned char hci_write_sleep_mode[] = { 0x01, 0x27, 0xfc, 0x0c, 
 	0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00,
+	0x00, 0x00 };
+*/
+//Broadcom Bluetooth Feature
+unsigned char hci_write_sleep_mode[] = { 0x01, 0x27, 0xfc, 0x0c, 
+	0x01, 0x01, 0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00,
 	0x00, 0x00 };
 
 int
@@ -226,6 +233,25 @@ parse_bdaddr(char *optarg)
 }
 
 int
+parse_bdaddr2(char *optarg)
+{
+	int bd_addr[6];
+	int i;
+
+	sscanf(optarg, "%02X%02X%02X%02X%02X%02X",
+		&bd_addr[5], &bd_addr[4], &bd_addr[3],
+		&bd_addr[2], &bd_addr[1], &bd_addr[0]);
+
+	for (i = 0; i < 6; i++) {
+		hci_write_bd_addr[4 + i] = bd_addr[i];
+	}
+
+	bdaddr_flag = 1;	
+
+	return(0);
+}
+
+int
 parse_enable_lpm(char *optarg)
 {
 	enable_lpm = 1;
@@ -317,6 +343,39 @@ parse_cmd_line(int argc, char **argv)
     }
 
 	return(0);
+}
+
+void
+reset_bt()
+{
+	int btfd;
+	char *rfkill = "/sys/class/rfkill/rfkill0/state";
+	char *disable = "0";
+	char *enable = "1";
+	struct timespec req = {0};
+
+	req.tv_sec = 0;
+	req.tv_nsec = RFKILL_WAIT * 1000L;
+
+	btfd = fopen(rfkill, "w");
+	if (btfd == 0 ) {
+		fprintf(stderr, "open(%s) failed: %s (%d)", rfkill, strerror(errno),
+				errno);
+		return;
+	}
+	fputs(disable, btfd);
+	fclose(btfd);
+	nanosleep(&req, (struct timespec *)NULL);
+
+	btfd = fopen(rfkill, "w");
+	if (btfd == 0 ) {
+		fprintf(stderr, "open(%s) failed: %s (%d)", rfkill, strerror(errno),
+				errno);
+		return;
+	}
+	fputs(enable, btfd);
+	fclose(btfd);
+	nanosleep(&req, (struct timespec *)NULL);
 }
 
 void
@@ -435,8 +494,6 @@ proc_patchram()
 
 	read(uart_fd, &buffer[0], 2);
 
-	usleep(50000);
-
 	while (read(hcdfile_fd, &buffer[1], 3)) {
 		buffer[0] = 0x01;
 
@@ -510,34 +567,70 @@ read_default_bdaddr()
 {
 	int sz;
 	int fd;
+	struct stat st;
 	char path[PROPERTY_VALUE_MAX];
+	char addr_from_ril[PROPERTY_VALUE_MAX];
 	char bdaddr[18];
+/*
+ *	We can get BT address from previously saved file
+ */
+	fd = open("/data/misc/bluetoothd/address", O_RDONLY);
+	if (fd > 0)
+	{
+		sz = read(fd, addr_from_ril, 12);
+		printf("Read default bdaddr from /data/misc/bluetoothd/address: %s\n", addr_from_ril);
+		close(fd);
+		parse_bdaddr2(addr_from_ril);
+		return;
+	}
+/*
+ *	We can get BT address from ril
+ */
+	property_get("ril.bt_macaddr", addr_from_ril, "");
+	if (addr_from_ril[0] != 0)
+	{
+		printf("Read default bdaddr from ril.bt_macaddr: %s\n", addr_from_ril);
+		parse_bdaddr2(addr_from_ril);
 
+		if ( stat("/data/misc/bluetoothd", &st) == 0 )
+		{
+		    fd = open("/data/misc/bluetoothd/address", O_WRONLY|O_CREAT|O_TRUNC, S_IRUSR|S_IWUSR|S_IRGRP);
+		    if (fd > 0)
+		    {
+			write(fd, addr_from_ril, strlen(addr_from_ril));
+			close(fd);
+		    }
+		}
+        return;
+	}
+/*
+ *	Or we can get BT address from a file
+ */
 	property_get("ro.bt.bdaddr_path", path, "");
-	if (path[0] == 0)
-		return;
-
-	fd = open(path, O_RDONLY);
-	if (fd < 0) {
-		fprintf(stderr, "open(%s) failed: %s (%d)", path, strerror(errno),
+	if (path[0] != 0)
+	{
+		fd = open(path, O_RDONLY);
+		if (fd < 0) {
+		    fprintf(stderr, "open(%s) failed: %s (%d)", path, strerror(errno),
 				errno);
-		return;
-	}
+		    return;
+		}
 
-	sz = read(fd, bdaddr, sizeof(bdaddr));
-	if (sz < 0) {
-		fprintf(stderr, "read(%s) failed: %s (%d)", path, strerror(errno),
+		sz = read(fd, bdaddr, sizeof(bdaddr));
+		if (sz < 0) {
+		    fprintf(stderr, "read(%s) failed: %s (%d)", path, strerror(errno),
 				errno);
-		close(fd);
-		return;
-	} else if (sz != sizeof(bdaddr)) {
-		fprintf(stderr, "read(%s) unexpected size %d", path, sz);
-		close(fd);
-		return;
-	}
+		    close(fd);
+		    return;
+		} else if (sz != sizeof(bdaddr)) {
+			fprintf(stderr, "read(%s) unexpected size %d", path, sz);
+			close(fd);
+			return;
+		}
 
-	printf("Read default bdaddr of %s\n", bdaddr);
-	parse_bdaddr(bdaddr);
+		printf("Read default bdaddr from ro.bt.bdaddr_path: %s\n", bdaddr);
+		parse_bdaddr(bdaddr);
+	}
 }
 
 int
@@ -550,6 +643,8 @@ main (int argc, char **argv)
 	if (uart_fd < 0) {
 		exit(1);
 	}
+
+	reset_bt();
 
 	init_uart();
 
@@ -567,12 +662,15 @@ main (int argc, char **argv)
 		proc_bdaddr();
 	}
 
+	if (enable_hci) {
+		proc_enable_hci();
+	}
+
 	if (enable_lpm) {
 		proc_enable_lpm();
 	}
 
 	if (enable_hci) {
-		proc_enable_hci();
 		while (1) {
 			sleep(UINT_MAX);
 		}
@@ -580,3 +678,4 @@ main (int argc, char **argv)
 
 	exit(0);
 }
+
