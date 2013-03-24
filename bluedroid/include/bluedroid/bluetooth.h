@@ -30,6 +30,10 @@ extern "C" {
  * Returns 0 on success, -ve on error */
 int bt_enable();
 
+/* Wrapper for bt_enable needed by fm radio
+ * Returns whatever bt_enable returns */
+int bt_chip_enable();
+
 /* Disable the bluetooth interface.
  *
  * Responsbile for stopping daemons, pulling down the HCI interface, and
@@ -38,6 +42,10 @@ int bt_enable();
  *
  * Returns 0 on success, -ve on error */
 int bt_disable();
+
+/* Wrapper for bt_disable needed by fm radio
+ * Returns whatever bt_disable returns */
+int bt_chip_disable();
 
 /* Returns 1 if enabled, 0 if disabled, and -ve on error */
 int bt_is_enabled();
