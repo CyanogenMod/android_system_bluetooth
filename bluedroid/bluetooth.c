@@ -44,7 +44,7 @@
 
 static int rfkill_id = -1;
 static char *rfkill_state_path = NULL;
-
+static int FM_RADIO_ON = 0;
 
 static int init_rfkill() {
     char path[64];
@@ -148,6 +148,8 @@ static inline int create_hci_sock() {
 
 int bt_enable() {
     LOGV(__FUNCTION__);
+    if (bt_is_enabled() == 1)
+        return 0;
 
     int ret = -1;
     int hci_sock = -1;
@@ -195,8 +197,26 @@ out:
     return ret;
 }
 
+int bt_chip_enable() {
+    LOGV(__FUNCTION__);
+    int ret = -1;
+    ret = bt_enable();
+    FM_RADIO_ON = 1;
+    return ret;
+}
+
+int bt_chip_disable() {
+    LOGV(__FUNCTION__);
+    int ret = -1;
+    FM_RADIO_ON = 0;
+    ret = bt_disable();
+    return ret;
+}
+
 int bt_disable() {
     LOGV(__FUNCTION__);
+    if (FM_RADIO_ON == 1)
+        return 1;    
 
     int ret = -1;
     int hci_sock = -1;
