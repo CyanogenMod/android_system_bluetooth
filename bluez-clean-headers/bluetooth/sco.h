@@ -32,7 +32,6 @@ struct sockaddr_sco {
  bdaddr_t sco_bdaddr;
 /* WARNING: DO NOT EDIT, AUTO-GENERATED CODE - SEE TOP FOR INSTRUCTIONS */
  uint16_t sco_pkt_type;
- int8_t is_wbs;
 };
 #define SCO_OPTIONS 0x01
 struct sco_options {
