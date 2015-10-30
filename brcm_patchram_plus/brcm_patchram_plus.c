@@ -88,8 +88,11 @@
 #define HCI_UART_BCSP	1
 #define HCI_UART_3WIRE	2
 #define HCI_UART_H4DS	3
-#define HCI_UART_LL		4
+#define HCI_UART_LL	4
 
+#ifdef TARGET_IS_GALAXYS
+#define RFKILL_WAIT 200000
+#endif
 
 int uart_fd = -1;
 int hcdfile_fd = -1;
@@ -112,9 +115,17 @@ unsigned char hci_update_baud_rate[] = { 0x01, 0x18, 0xfc, 0x06, 0x00, 0x00,
 unsigned char hci_write_bd_addr[] = { 0x01, 0x01, 0xfc, 0x06, 
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
+#ifdef TARGET_IS_GALAXYS
+//Broadcom Bluetooth Feature
+unsigned char hci_write_sleep_mode[] = { 0x01, 0x27, 0xfc, 0x0c,
+        0x01, 0x01, 0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00 };
+#else
+// Google Code, Broadcom Bluetooth Feature
 unsigned char hci_write_sleep_mode[] = { 0x01, 0x27, 0xfc, 0x0c, 
 	0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00,
 	0x00, 0x00 };
+#endif
 
 int
 parse_patchram(char *optarg)
@@ -319,7 +330,42 @@ parse_cmd_line(int argc, char **argv)
 	return(0);
 }
 
-void
+#ifdef TARGET_IS_GALAXYS
+void 
+reset_bt()
+    {
+	int btfd;
+	char *rfkill = "/sys/class/rfkill/rfkill0/state";
+	char *disable = "0";
+	char *enable = "1";
+	struct timespec req = {0};
+
+	req.tv_sec = 0;
+	req.tv_nsec = RFKILL_WAIT * 1000L;
+
+	btfd = fopen(rfkill, "w");
+	if (btfd == 0 ) {
+		fprintf(stderr, "open(%s) failed: %s (%d)", rfkill, strerror(errno),
+				errno);
+		return;
+	}
+	fputs(disable, btfd);
+	fclose(btfd);
+	nanosleep(&req, (struct timespec *)NULL);
+
+	btfd = fopen(rfkill, "w");
+	if (btfd == 0 ) {
+		fprintf(stderr, "open(%s) failed: %s (%d)", rfkill, strerror(errno),
+				errno);
+		return;
+	}
+	fputs(enable, btfd);
+	fclose(btfd);
+	nanosleep(&req, (struct timespec *)NULL);
+}
+#endif
+
+void 
 init_uart()
 {
 	tcflush(uart_fd, TCIOFLUSH);
@@ -414,7 +460,6 @@ proc_reset()
 {
 	signal(SIGALRM, expired);
 
-
 	hci_send_cmd(hci_reset, sizeof(hci_reset));
 
 	alarm(4);
@@ -435,7 +480,9 @@ proc_patchram()
 
 	read(uart_fd, &buffer[0], 2);
 
-	usleep(50000);
+#ifndef TARGET_IS_GALAXYS
+        usleep(50000);
+#endif
 
 	while (read(hcdfile_fd, &buffer[1], 3)) {
 		buffer[0] = 0x01;
@@ -551,6 +598,10 @@ main (int argc, char **argv)
 		exit(1);
 	}
 
+#ifdef TARGET_IS_GALAXYS
+        reset_bt();
+#endif
+
 	init_uart();
 
 	proc_reset();
@@ -572,7 +623,7 @@ main (int argc, char **argv)
 	}
 
 	if (enable_hci) {
-		proc_enable_hci();
+                proc_enable_hci();
 		while (1) {
 			sleep(UINT_MAX);
 		}

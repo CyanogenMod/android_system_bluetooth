@@ -1,5 +1,9 @@
 ifeq ($(BOARD_HAVE_BLUETOOTH_BCM),true)
 
+ifdef TARGET_IS_GALAXYS
+  LOCAL_CFLAGS += -DTARGET_IS_GALAXYS
+endif
+
 LOCAL_PATH:= $(call my-dir)
 
 #
